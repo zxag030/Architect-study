@@ -2,7 +2,11 @@ const { chromium, webkit } = require('playwright');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
-const server = require('node:http').createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.resolve(__dirname,'../index.html')))});
+const server = require('node:http').createServer((req,res)=>{
+ const file=path.resolve(__dirname,'..','.'+decodeURIComponent(req.url==='/'?'/index.html':req.url));
+ if(!file.startsWith(path.resolve(__dirname,'..')+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return}
+ res.setHeader('Content-Type',file.endsWith('.mjs')||file.endsWith('.js')?'text/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(file));
+});
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  for(const engine of (process.env.TEST_WEBKIT ? [chromium,webkit] : [chromium])){
