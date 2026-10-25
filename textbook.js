@@ -115,10 +115,10 @@ async function setPdfOffset(value){
  }
  refreshPdfNotice();
 }
-function openSource(page){
+function openSource(page){return withStudyInputCommit(()=>{
  modal={type:pdfState.file?'pdf':'notpdf',page:Number(page)};
  render();
-}
+})}
 function pdfViewerHtml(){return `<div class="flex"><h3>교재 보기 · 인쇄 ${modal.page}쪽</h3><button class="btn" onclick="closeModal()">닫기</button></div><div class="btnrow pdf-controls" style="margin:16px 0"><button id="pdf-prev" class="btn" onclick="movePdfPage(-1)" disabled>이전 페이지</button><label class="tiny" for="pdf-page">PDF 실제 페이지</label><input id="pdf-page" type="number" inputmode="numeric" min="1" step="1" value="${requestedPdfPage()}" oninput="previewPdfPage(this.value)" onchange="goPdfPage(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();goPdfPage(this.value)}" disabled><span id="pdf-total" class="tiny muted">/ 문서 로딩 중</span><button id="pdf-next" class="btn" onclick="movePdfPage(1)" disabled>다음 페이지</button></div>${pdfSelectionHtml(modal.page)}<div class="field" style="margin-top:12px"><label class="tiny" for="viewer-offset">페이지 오프셋 (실제 페이지 − 인쇄 쪽수)</label><input id="viewer-offset" type="number" step="1" value="${pdfState.offset}" onchange="setPdfOffset(this.value)"></div><p id="pdf-status" class="hint pdf-status" role="status">PDF 문서를 불러오는 중…</p><div class="btnrow"><button class="btn" onclick="renderPdfPage()">표시 다시 시도</button></div><div class="pdf-scroll"><canvas id="pdf-canvas" aria-label="교재 PDF 페이지" hidden></canvas></div>`}
 function pdfStatus(message){const el=document.getElementById('pdf-status');if(el)el.textContent=message}
 function requestedPdfPage(){return modal.actualPage??modal.page+pdfState.offset}
