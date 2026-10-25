@@ -23,23 +23,22 @@ const server = require('node:http').createServer((req,res)=>{
  // Exercise the actual ten-copy, blank-check, assessment, and save flow.
  async function complete(){
  await page.evaluate(()=>startOne('q001','learn'));
- for(let i=0;i<10;i++){await page.locator('#typing').fill(await page.evaluate(()=>activeCard().answer));await page.locator('button[onclick="advance()"]').click()}
+ for(let i=0;i<10;i++){await page.locator('#typing').fill(await page.evaluate(()=>activeCard().answer));await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(i=>session.repeat===i+1,i)}
  assert.equal(await page.evaluate(()=>session.stage),2);
  await page.locator('button[onclick="checkBlanks()"]').click();
  assert.equal(await page.evaluate(()=>session.blankPassed),false);
  const blanks=page.locator('.blankInput');
- for(let i=0;i<await blanks.count();i++)await blanks.nth(i).fill(await blanks.nth(i).getAttribute('data-key'));
+ for(let i=0;i<await blanks.count();i++){await blanks.nth(i).click();await blanks.nth(i).fill(await blanks.nth(i).getAttribute('data-key'));}
  await page.locator('button[onclick="checkBlanks()"]').click();
  await page.locator('button[onclick="advance()"]').click();
  assert.equal((await stats()).completed,0);
  await page.locator('#freeInput').fill(await page.evaluate(()=>activeCard().answer));
- await page.locator('button[onclick="reveal()"]').click();
- await page.locator('button[onclick="autoRate()"]').click();
+ await page.locator('button[onclick="completeLearning()"]').click();await page.waitForFunction(()=>!session);
  }
  await complete();
  assert.deepEqual(await stats(),{goal:18,completed:1,remaining:17,percent:6});
  // Repeat without the pre-save assertion, then verify no duplicate.
- await page.evaluate(()=>{startOne('q001','learn');session.stage=3;session.repeat=10;session.blankPassed=true;session.revealed=true;rate('weak')});
+ await page.evaluate(()=>{startOne('q001','learn');session.stage=3;session.repeat=10;session.blankPassed=true;session.free=activeCard().answer;completeLearning()});
  assert.equal((await stats()).completed,1);
  await page.evaluate(()=>{data.progress.q003={status:'master',count:1};startOne('q003','review');session.revealed=true;rate('master')});
  assert.equal((await stats()).completed,1);
