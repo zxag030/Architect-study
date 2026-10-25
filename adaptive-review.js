@@ -17,7 +17,7 @@ function recordReview(id,status,mode){
   pending:status==='unknown'&&retries<MAX_SAME_DAY_RETRIES};
 }
 function reviewPath(status){
- if(status==='master')return {stages:[3],copies:0,blanks:false};
+ if(status==='master'||status==='unrated')return {stages:[3],copies:0,blanks:false};
  if(status==='weak')return {stages:[2,3],copies:0,blanks:true};
  return {stages:[0,1,2,3],copies:3,blanks:true};
 }
@@ -29,10 +29,35 @@ function prepareSessionCard(){
 }
 function sessionCopies(){return session.copyTarget??10}
 function adaptiveReady(){
- if(session.mode==='learn')return true;
  return (!session.requiresBlanks||session.blankPassed)&&
-  (!session.copyTarget||(session.answerConfirmed&&session.repeat>=session.copyTarget));
+  (!session.copyTarget||((session.mode==='learn'||session.answerConfirmed)&&session.repeat>=session.copyTarget));
 }
+function unratedReady(card){
+ const p=pr(card.id);
+ return p.status!=='unrated'||(!p.first&&!p.due)||(p.first&&p.first<today)||(p.due&&p.due<=today);
+}
+function availableReview(card){return pr(card.id).status!=='new'&&pr(card.id).last!==today&&unratedReady(card)&&!reviewRecord(card.id).completed}
+function finishSessionCard(){
+ session.idx++;
+ if(session.idx>=session.ids.length){
+  const length=session.ids.length,label=session.mode==='learn'?'학습':'복습';
+  session=null;view='today';render();
+  alert(`${length}개념 ${label}을 마쳤어요. 진행 상황을 저장했습니다.${rereviewQueue().length?' 복습 탭에 오늘의 재복습 대기가 있습니다.':''}`);
+ }else{prepareSessionCard();renderSession()}
+}
+function completeLearning(){return withStudyInputCommit(()=>{
+ if(session?.mode!=='learn'||session.stage!==3)return;
+ if(!adaptiveReady()||!session.free.trim()){alert('따라 쓰기 10회, 핵심 빈칸, 백지서술 연습을 모두 완료해 주세요.');return}
+ today=nowLocal();const c=activeCard(),p=pr(c.id);
+ // Legacy classifications lack reliable provenance: never reinterpret them here.
+ const pending=p.status==='new'||p.status==='unrated';
+ data.progress[c.id]={...p,status:pending?'unrated':p.status,
+  due:pending?plusDays(today,1):p.due,last:today,first:p.first||today,count:(p.count||0)+1,
+  reviewCount:p.reviewCount||0,
+  ...(pending?{assessmentOrigin:'pending-review',learnedAt:today}:{})};
+ data.dailyCompletions??={};data.dailyCompletions[today]=uniq([...(data.dailyCompletions[today]||[]),c.id]);
+ save();finishSessionCard();
+})}
 function sessionSteps(){
  const label=session.mode==='learn'?'최초 학습':session.mode==='random'?'누적 랜덤 테스트':session.mode==='rereview'?'당일 재복습':'일반 복습';
  const names={0:'정답 확인',1:`따라 쓰기 ${sessionCopies()}회`,2:'핵심 빈칸',3:'백지서술'};

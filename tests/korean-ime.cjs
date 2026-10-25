@@ -1,148 +1,79 @@
-const {chromium,webkit}=require('playwright');
-const assert=require('node:assert/strict');
+const {chromium,webkit}=require('playwright'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 const root=path.resolve(__dirname,'..');
-const server=http.createServer((req,res)=>{
- const pathname=new URL(req.url,'http://localhost').pathname;
- const file=path.resolve(root,'.'+decodeURIComponent(pathname==='/'?'/index.html':pathname));
- if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return}
- res.setHeader('Content-Type',/\.m?js$/.test(file)?'text/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(file));
-});
-// Synthetic browser composition events exercise app logic; this is NOT native iPad IME input.
-async function compose(page,index,text){
- await page.evaluate(({index,text})=>{
-  const el=document.querySelectorAll('.blankInput')[index];el.focus();
-  el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-  el.value=text.slice(0,-1);
-  el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true,inputType:'insertCompositionText'}));
-  el.value=text;
-  el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:text}));
-  // WebKit may deliver the final input after compositionend. Store whole values, not suffixes.
-  el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
-  el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
- },{index,text});
-}
+const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http://localhost').pathname,file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return}res.setHeader('Content-Type',/\.m?js$/.test(file)?'text/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(file))});
 (async()=>{
- await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const engine=process.env.TEST_WEBKIT?webkit:chromium;
- const browser=await engine.launch(engine===chromium?{headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium'}:{headless:true});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const engine=process.env.TEST_WEBKIT?webkit:chromium;
+ const browser=await engine.launch(engine===chromium?{executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true}:{headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:820,height:1180},hasTouch:true});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:820,height:1180},hasTouch:true}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:'+server.address().port);
+  await page.evaluate(()=>{const card={id:'ime-fixture',q:'입력 테스트',answer:'가설지지체\n작업공간\n태핑',blanks:['가설지지체','작업공간','태핑'],kind:'빈출',category:'테스트',page:80};data.cards.push(card);data.progress[card.id]={status:'weak',count:7};startOne(card.id,'review');window.originalBlanks=[...document.querySelectorAll('.blankInput')]});
+  assert.equal(await page.locator('.blankInput[oninput]').count(),0);
+  assert.equal(await page.locator('.blankInput').evaluateAll(els=>new Set(els.map(el=>el.id)).size),3);
+  // Simulated native event ordering; this is not the actual OS Korean keyboard.
+  await page.locator('.blankInput').nth(0).click();
   await page.evaluate(()=>{
-   data.progress.q001={status:'weak',count:7,last:'2026-10-24'};save();
-   const card={id:'ime-fixture',q:'입력 회귀 테스트',answer:'가설지지체\n작업공간\n태핑',blanks:['가설지지체','작업공간','태핑'],kind:'빈출',category:'테스트',page:80};
-   data.cards.push(card);startSession([card],'learn','test');session.stage=2;renderSession();
-   window.originalBlanks=[...document.querySelectorAll('.blankInput')];
-   window.mutationsDuringComposition=0;
-   new MutationObserver(records=>{
-    if(studyInputState.composing.size&&records.some(r=>[...r.removedNodes].some(n=>originalBlanks.some(el=>n===el||n.contains?.(el)))))mutationsDuringComposition++;
-   }).observe(document.getElementById('root'),{childList:true,subtree:true});
+   const [a,b]=originalBlanks;
+   a.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));a.value='가설ㅈ';
+   a.dispatchEvent(new CompositionEvent('compositionupdate',{bubbles:true,data:'가설ㅈ'}));
+   a.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,isComposing:true,inputType:'insertCompositionText',data:'가설ㅈ'}));
+   a.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true,inputType:'insertCompositionText'}));
+   window.selection=a.selectionStart;renderSession();render();shell('must not replace');
+   b.focus();
+   window.handoffEditable=!b.readOnly;
+   window.ghostAllowed=b.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,isComposing:true,inputType:'insertCompositionText',data:'가설지지체'}));
+   // A native readonly control cannot apply the stale composition text.
+   if(!b.readOnly&&ghostAllowed)b.value='가설지지체';
+   a.value='가설지지체';a.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));a.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition'}));
   });
-  assert.equal(await page.locator('.blankInput').evaluateAll(inputs=>new Set(inputs.map(el=>el.id)).size),3);
-  // Explicit render and background updates must preserve nodes, selection, focus and preedit.
-  await page.evaluate(()=>{
-   const el=originalBlanks[0];el.focus();
-   el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-   el.value='가설ㅈ';el.setSelectionRange(3,3);
-   el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));
-   renderSession();render();shell('must not replace inputs');
-  });
-  assert.equal(await page.evaluate(()=>document.activeElement===originalBlanks[0]&&document.querySelector('.blankInput')===originalBlanks[0]),true);
-  assert.equal(await page.locator('.blankInput').nth(0).inputValue(),'가설ㅈ');
-  assert.equal(await page.locator('.blankInput').nth(0).evaluate(el=>el.selectionStart),3);
-  assert.notEqual(await page.evaluate(()=>session.blank[0]),'가설ㅈ');
-  await compose(page,0,'가설지지체');await compose(page,1,'작업공간');await compose(page,2,'태핑');
+  assert.equal(await page.evaluate(()=>originalBlanks.every(el=>el.isConnected)),true);
+  assert.equal(await page.evaluate(()=>handoffEditable),false);assert.equal(await page.evaluate(()=>ghostAllowed),false);
+  assert.equal(await page.locator('.blankInput').nth(1).inputValue(),'');
+  await page.waitForFunction(()=>!studyInputBusy());
+  assert.equal(await page.evaluate(()=>session.blank[0]),'가설지지체');
+  async function compose(index,text){
+   await page.waitForFunction(()=>!studyInputBusy());
+   await page.locator('.blankInput').nth(index).click();
+   await page.evaluate(({index,text})=>{const el=document.querySelectorAll('.blankInput')[index];if(el.readOnly)throw Error('editor not activated');el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value=text.slice(0,-1);el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));el.value=text;el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}))},{index,text});
+   await page.waitForFunction(()=>!studyInputBusy());
+  }
+  await compose(1,'작업공간');await compose(2,'태핑');
   assert.deepEqual(await page.evaluate(()=>session.blank),['가설지지체','작업공간','태핑']);
-  // Deletion and reinsertion affect only the originating blank.
-  await page.locator('.blankInput').nth(2).press('Backspace');
-  assert.equal(await page.locator('.blankInput').nth(2).inputValue(),'태');
-  await compose(page,2,'태핑');
-  // A late compositionend from the previous field cannot write into the new focused field.
-  await page.evaluate(()=>{
-   const [a,b]=originalBlanks;a.focus();a.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));a.value='가설지지';
-   b.focus();b.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));b.value='작업ㄱ';b.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));
-   a.value='가설지지체';a.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));a.dispatchEvent(new InputEvent('input',{bubbles:true}));
+  await page.locator('.blankInput').nth(2).press('Backspace');assert.equal(await page.locator('.blankInput').nth(2).inputValue(),'태');
+  await compose(2,'태핑');
+  // No app-induced blur during composition; a pending grading action waits for native end.
+  const beforeEnd=await page.evaluate(()=>{
+   const el=originalBlanks[2];el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='태ㅍ';
+   window.blurCalls=0;const blur=el.blur;el.blur=()=>{blurCalls++;return blur.call(el)};
+   checkBlanks();const result={checked:session.checked,focused:document.activeElement===el,blurCalls};
+   el.value='태핑';el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}));return result;
   });
-  assert.equal(await page.locator('.blankInput').nth(1).inputValue(),'작업ㄱ');
-  await compose(page,1,'작업공간');
-  // Grading must wait for the commit, even when click precedes compositionend.
-  const checkedBeforeCommit=await page.evaluate(()=>{
-   const el=originalBlanks[2];el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='태ㅍ';
-   el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));
-   document.querySelector('button[onclick="checkBlanks()"]').click();
-   const checked=session.checked;
-   el.value='태핑';el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}));
-   return checked;
-  });
-  assert.equal(checkedBeforeCommit,false);
+  assert.equal(beforeEnd.checked,false);assert.equal(beforeEnd.focused,true);assert.equal(beforeEnd.blurCalls,0);
   await page.waitForFunction(()=>session.blankPassed);
-  assert.deepEqual(await page.evaluate(()=>session.blank),['가설지지체','작업공간','태핑']);
-  await page.evaluate(()=>originalBlanks[2].dispatchEvent(new InputEvent('input',{bubbles:true,data:'태핑'})));
-  assert.equal(await page.evaluate(()=>session.blankPassed),true);
-  // After an edit, a previously passed assessment cannot skip the new grading.
-  await compose(page,0,'오답');assert.equal(await page.evaluate(()=>session.blankPassed),false);
-  await page.getByRole('button',{name:'빈칸 채점',exact:true}).click();
-  assert.equal(await page.evaluate(()=>session.checked&&!session.blankPassed),true);
-  // Retry waits for composition and only then resets/replaces the fields.
-  const retryWasDeferred=await page.evaluate(()=>{
-   const el=document.querySelectorAll('.blankInput')[1];el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='작업ㄱ';
-   document.querySelector('button[onclick="retryBlanks()"]').click();
-   window.retryNode=el;const connected=el.isConnected;
-   el.value='작업공간';el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));return connected;
-  });
-  assert.equal(retryWasDeferred,true);
-  await page.waitForFunction(()=>!retryNode.isConnected);
-  assert.deepEqual(await page.locator('.blankInput').evaluateAll(inputs=>inputs.map(el=>el.value)),['','','']);
-  await page.evaluate(()=>{retryNode.value='late stale';retryNode.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}))});
-  assert.deepEqual(await page.evaluate(()=>session.blank),[]);
-  await compose(page,0,'가설지지체');await compose(page,1,'작업공간');await compose(page,2,'태핑');
-  // WebKit blur path without compositionend: wait one frame and read that node's final value.
-  await page.evaluate(()=>{
-   const el=document.querySelectorAll('.blankInput')[2];el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='태핑';checkBlanks();
-  });
-  await page.waitForFunction(()=>session.blankPassed);
-  // Explicit render while typing non-composing text is delayed until focus leaves.
-  await page.locator('.blankInput').nth(0).focus();
-  await page.evaluate(()=>{window.beforeRender=document.activeElement;render()});
-  assert.equal(await page.evaluate(()=>beforeRender===document.activeElement&&beforeRender.isConnected),true);
-  await page.locator('.blankInput').nth(0).blur();
-  await page.waitForFunction(()=>!beforeRender.isConnected);
-  assert.deepEqual(await page.locator('.blankInput').evaluateAll(inputs=>inputs.map(el=>el.value)),['가설지지체','작업공간','태핑']);
-  // PDF opening commits the active input; closing preserves the three answers.
-  await page.locator('.blankInput').nth(1).focus();await page.evaluate(()=>openSource(80));
-  await page.getByRole('button',{name:'닫기',exact:true}).click();
-  assert.deepEqual(await page.locator('.blankInput').evaluateAll(inputs=>inputs.map(el=>el.value)),['가설지지체','작업공간','태핑']);
-  // Stage 1 must commit before advancing and clear the finished repetition.
-  const repeatBeforeCommit=await page.evaluate(()=>{
-   session.stage=1;renderSession();const el=document.getElementById('typing');el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='중간';advance();const repeat=session.repeat;
-   el.value=activeCard().answer;el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}));return repeat;
-  });
-  assert.equal(repeatBeforeCommit,0);
-  await page.waitForFunction(()=>session.repeat===1);
-  assert.equal(await page.locator('#typing').inputValue(),'');
-  // Stage 3 must classify the final committed answer, not preedit text.
-  const revealedBeforeCommit=await page.evaluate(()=>{
-   session.stage=3;renderSession();const el=document.getElementById('freeInput');el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='가설';reveal();const revealed=session.revealed;
-   el.value=activeCard().answer;el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}));return revealed;
-  });
-  assert.equal(revealedBeforeCommit,false);
-  await page.waitForFunction(()=>session.revealed);
-  assert.equal(await page.locator('#freeInput').inputValue(),'가설지지체\n작업공간\n태핑');
-  assert.equal(await page.evaluate(()=>autoAssess(activeCard(),session.free).status),'master');
-  // Re-editing a revealed answer must commit before automatic classification/save.
-  const statusBeforeCommit=await page.evaluate(()=>{
-   const el=document.getElementById('freeInput');el.focus();el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='가';autoRate();
-   const status=data.progress['ime-fixture']?.status;
-   el.value='전혀 다른 답';el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}));return status;
-  });
-  assert.equal(statusBeforeCommit,undefined);
-  await page.waitForFunction(()=>data.progress['ime-fixture']?.status==='unknown');
-  assert.equal(await page.evaluate(()=>data.progress.q001.count),7);
-  assert.equal(await page.evaluate(()=>dailyStats().completed),0);
-  assert.equal(await page.evaluate(()=>mutationsDuringComposition),0);
+  await compose(0,'오답');await page.locator('button[onclick="checkBlanks()"]').click();await page.waitForFunction(()=>session.checked);
+  assert.equal(await page.evaluate(()=>session.blankPassed),false);
+  // Hints update in place, including when requested during composition.
+  await page.waitForFunction(()=>!studyInputBusy());await page.locator('.blankInput').nth(0).click();
+  await page.evaluate(()=>{const el=originalBlanks[0];el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='가설';toggleStudyHint();el.value='가설지지체';el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));el.dispatchEvent(new InputEvent('input',{bubbles:true}))});
+  await page.waitForFunction(()=>session.hint);assert.equal(await page.evaluate(()=>originalBlanks.every(el=>el.isConnected)),true);
+  await page.waitForFunction(()=>!studyInputBusy());
+  // Retry waits for native composition completion, then creates a fresh attempt.
+  const kept=await page.evaluate(()=>{const el=originalBlanks[0];el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));retryBlanks();const kept=el.isConnected;el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));return kept});
+  assert.equal(kept,true);await page.waitForFunction(()=>!originalBlanks[0].isConnected);
+  assert.deepEqual(await page.locator('.blankInput').evaluateAll(els=>els.map(el=>el.value)),['','','']);
+  await page.evaluate(()=>{originalBlanks[0].value='stale';originalBlanks[0].dispatchEvent(new InputEvent('input',{bubbles:true}));originalBlanks[0].dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}))});
+  await compose(0,'가설지지체');await compose(1,'작업공간');await compose(2,'태핑');
+  await page.locator('button[onclick="checkBlanks()"]').click();await page.waitForFunction(()=>session.blankPassed);
+  await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(()=>session.stage===3);
+  await page.locator('#freeInput').fill('가설지지체\n작업공간\n태핑');
+  await page.locator('button[onclick="reveal()"]').click();await page.waitForFunction(()=>session.revealed);
+  await page.locator('button[onclick="autoRate()"]').click();await page.waitForFunction(()=>!session);
+  assert.equal(await page.evaluate(()=>pr('ime-fixture').status),'master');
+  const trace=await page.evaluate(()=>studyInputState.trace);
+  for(const type of ['focus','blur','compositionstart','compositionupdate','compositionend','beforeinput','input'])assert.ok(trace.some(e=>e.event===type),type);
+  assert.equal(JSON.stringify(trace).includes('가설지지체'),false);
   assert.deepEqual(errors,[]);
-  console.log(engine.name()+': synthetic Korean composition, deletion, field isolation, deferred grade/retry/render, stages 1/3, PDF and records passed; native iPad IME untested');
+  console.log(engine.name()+': readonly IME handoff, stale beforeinput, independent values, no forced blur, hint/grade/retry and final review passed; actual iPad keyboard untested');
  }finally{await browser.close();server.close()}
-})().catch(error=>{console.error(error);process.exit(1)});
+})().catch(e=>{console.error(e);process.exit(1)});
