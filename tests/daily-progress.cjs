@@ -41,7 +41,7 @@ const server = require('node:http').createServer((req,res)=>{
  // Repeat without the pre-save assertion, then verify no duplicate.
  await page.evaluate(()=>{startOne('q001','learn');session.stage=3;session.repeat=10;session.blankPassed=true;session.revealed=true;rate('weak')});
  assert.equal((await stats()).completed,1);
- await page.evaluate(()=>{startOne('q003','review');session.revealed=true;rate('master')});
+ await page.evaluate(()=>{data.progress.q003={status:'master',count:1};startOne('q003','review');session.revealed=true;rate('master')});
  assert.equal((await stats()).completed,1);
  assert.equal(await page.locator('[role=progressbar]').first().getAttribute('aria-valuenow'),'6');
  // JSON backup round trip retains both new completions and existing records.
