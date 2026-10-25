@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const server = require('node:http').createServer((req,res)=>{
- const file=path.resolve(__dirname,'..','.'+decodeURIComponent(req.url==='/'?'/index.html':req.url));
+ const pathname=new URL(req.url,'http://localhost').pathname;
+ const file=path.resolve(__dirname,'..','.'+decodeURIComponent(pathname==='/'?'/index.html':pathname));
  if(!file.startsWith(path.resolve(__dirname,'..')+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return}
  res.setHeader('Content-Type',file.endsWith('.mjs')||file.endsWith('.js')?'text/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(file));
 });

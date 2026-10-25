@@ -26,6 +26,20 @@ export CHROMIUM_PATH=$(node -e "console.log(require('playwright').chromium.execu
 node tests/daily-progress.cjs
 node tests/textbook.cjs
 TEST_WEBKIT=1 node tests/textbook.cjs
+node tests/pdf-navigation.cjs
+TEST_WEBKIT=1 node tests/pdf-navigation.cjs
 ```
 
 테스트 PDF는 테스트가 메모리에서 생성하는 도형 2페이지이며 교재 원문을 포함하지 않습니다.
+
+
+PDF 이동 회귀 테스트는 서로 다른 색의 3페이지 PDF로 캔버스 픽셀을 확인합니다. 실제 터치 이벤트로 번호 입력 직후 이전/다음 이동, 서로 다른 문제의 출처 페이지, 재접속, 라이브러리/worker 로딩 지연·실패와 진행 중 렌더 취소를 검사합니다. Playwright WebKit 실행은 실제 iPad Safari 기기 검증을 대신하지 않습니다.
+
+### iPad Safari에서 확인하기
+
+1. 교재 PDF를 선택하고 문제의 **교재 보기**를 누릅니다. 상단 전체 페이지 수가 표시될 때까지 기다립니다.
+2. 인쇄 쪽수와 PDF 실제 페이지가 다르면 오프셋을 설정합니다. 첫 페이지로 자동 대체하지 않으며 범위를 벗어나면 계산 결과와 허용 범위를 표시합니다.
+3. 번호 입력 후 이전/다음 버튼을 바로 터치하고 실제 내용이 바뀌는지 확인합니다. 서로 다른 쪽수의 두 문제에서도 확인합니다.
+4. 뷰어를 닫아 작성 답안이 남아 있는지, 사이트를 다시 열어 저장된 PDF가 연결되고 페이지 이동이 되는지 확인합니다.
+
+표시 실패 시 문서/worker 로드, 페이지 읽기, 렌더링 중 어느 단계에서 발생했는지 오류 이름과 메시지를 표시합니다. **표시 다시 시도** 또는 PDF 다시 선택을 사용할 수 있습니다. PDF.js와 worker는 `textbook.js` 위치를 기준으로 같은 사이트에서 불러옵니다.
