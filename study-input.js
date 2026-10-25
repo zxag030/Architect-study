@@ -78,7 +78,7 @@ function scheduleStudyInputFlush(){
 function withStudyInputCommit(run){
  if(studyInputBusy()){
   studyInputState.action??={owner:session,card:session?.ids[session.idx],stage:session?.stage,run};
-  studyInputNotice('한글 입력 확정 후 처리합니다. 키보드의 완료 또는 입력 확정 버튼을 누르세요.');scheduleStudyInputFlush();return;
+  studyInputNotice('한글 입력 확정 후 처리합니다. 키보드의 완료를 눌러주세요.');scheduleStudyInputFlush();return;
  }
  return runStudyAction(run);
 }
