@@ -16,6 +16,7 @@ const server = require('node:http').createServer((req,res)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-25T12:00:00')});
  await page.goto('http://127.0.0.1:'+server.address().port);
+ await page.evaluate(()=>{data.settings.newGoals={'2026-10-25':18,'2026-10-26':9};render()});
  const stats=()=>page.evaluate(()=>dailyStats());
  assert.deepEqual(await stats(),{goal:18,completed:0,remaining:18,percent:0});
  await page.evaluate(()=>{data.progress.q002={status:'weak',first:today,last:today,count:2};save();selectDay('2026-10-26')});
@@ -42,6 +43,7 @@ const server = require('node:http').createServer((req,res)=>{
  assert.equal((await stats()).completed,1);
  await page.evaluate(()=>{data.progress.q003={status:'master',count:1};startOne('q003','review');session.revealed=true;rate('master')});
  assert.equal((await stats()).completed,1);
+ await page.evaluate(()=>nav('today'));
  assert.equal(await page.locator('[role=progressbar]').first().getAttribute('aria-valuenow'),'6');
  // JSON backup round trip retains both new completions and existing records.
  await page.evaluate(async()=>{

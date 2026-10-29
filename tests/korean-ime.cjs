@@ -8,7 +8,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  try{
   const page=await browser.newPage({viewport:{width:820,height:1180},hasTouch:true}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:'+server.address().port);
-  await page.evaluate(()=>{const card={id:'ime-fixture',q:'입력 테스트',answer:'가설지지체\n작업공간\n태핑',blanks:['가설지지체','작업공간','태핑'],kind:'빈출',category:'테스트',page:80};data.cards.push(card);data.progress[card.id]={status:'weak',count:7};startOne(card.id,'review');window.originalBlanks=[...document.querySelectorAll('.blankInput')]});
+  await page.evaluate(()=>{const card={id:'ime-fixture',q:'입력 테스트',answer:'가설지지체\n작업공간\n태핑',blanks:['가설지지체','작업공간','태핑'],kind:'빈출',category:'테스트',page:80};data.cards.push(card);data.progress[card.id]={status:'weak',count:7};startSession([card],'review','manual','blank');window.originalBlanks=[...document.querySelectorAll('.blankInput')]});
   assert.equal(await page.locator('.blankInput[oninput]').count(),0);
   assert.equal(await page.locator('.blankInput').evaluateAll(els=>new Set(els.map(el=>el.id)).size),3);
   // Simulated native event ordering; this is not the actual OS Korean keyboard.
@@ -65,11 +65,20 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   await page.evaluate(()=>{originalBlanks[0].value='stale';originalBlanks[0].dispatchEvent(new InputEvent('input',{bubbles:true}));originalBlanks[0].dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}))});
   await compose(0,'가설지지체');await compose(1,'작업공간');await compose(2,'태핑');
   await page.locator('button[onclick="checkBlanks()"]').click();await page.waitForFunction(()=>session.blankPassed);
-  await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(()=>session.stage===3);
+  await page.locator('button[onclick="completeModeReview()"]').click();await page.waitForFunction(()=>!session);
+  assert.equal(await page.evaluate(()=>pr('ime-fixture').status),'weak');
+  assert.equal(await page.evaluate(()=>reviewStats().concepts),1);
+  assert.equal(await page.evaluate(()=>data.reviewHistory.at(-1).mode),'blank');
+  await page.evaluate(()=>startSession([data.cards.find(c=>c.id==='ime-fixture')],'review','manual','free'));
+  assert.equal(await page.evaluate(()=>session.stage),3);
   await page.locator('#freeInput').fill('가설지지체\n작업공간\n태핑');
   await page.locator('button[onclick="reveal()"]').click();await page.waitForFunction(()=>session.revealed);
-  await page.locator('button[onclick="autoRate()"]').click();await page.waitForFunction(()=>!session);
+  assert.equal(await page.evaluate(()=>pr('ime-fixture').status),'weak');
+  await page.locator('button[onclick="rate(\'master\')"]').click();await page.waitForFunction(()=>!session);
   assert.equal(await page.evaluate(()=>pr('ime-fixture').status),'master');
+  assert.equal(await page.evaluate(()=>reviewStats().concepts),1);
+  assert.equal(await page.evaluate(()=>reviewStats().attempts),2);
+  assert.deepEqual(await page.evaluate(()=>data.reviewHistory.map(e=>e.mode)),['blank','free']);
   const trace=await page.evaluate(()=>studyInputState.trace);
   for(const type of ['focus','blur','compositionstart','compositionupdate','compositionend','beforeinput','input'])assert.ok(trace.some(e=>e.event===type),type);
   assert.equal(JSON.stringify(trace).includes('가설지지체'),false);

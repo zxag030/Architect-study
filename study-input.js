@@ -30,7 +30,7 @@ function invalidateBlankAssessment(el,b){
  if(b.field!=='blank')return;
  session.blankPassed=false;session.checked=false;el.classList.remove('right','wrong');
  document.querySelectorAll('.blank-feedback').forEach(node=>node.remove());
- const next=document.querySelector('button[onclick="advance()"]');if(next)next.disabled=true;
+ const next=document.querySelector('button[onclick="advance()"],button[onclick="completeModeReview()"]');if(next)next.disabled=true;
 }
 function storeStudyInput(el){
  const b=currentStudyBinding(el);if(!b||studyInputState.composing.has(el))return;
@@ -126,10 +126,11 @@ for(const type of ['compositionstart','compositionupdate','compositionend','befo
  }
  traceStudyEvent(event);
 },true);
+function studyHintText(card=activeCard()){return card.blanks.map(word=>{const chars=[...String(word).trim()];return chars.length>1?chars[0]+'…':'○'}).join(' · ')}
 function toggleStudyHint(){return withStudyInputCommit(()=>{
  if(!session)return;
- if(session.entryStatus==='unrated'&&session.mode!=='learn')return;
+
  session.hint=!session.hint;const el=document.getElementById('study-hint');
- if(el){el.hidden=!session.hint;el.textContent=session.hint?'앞글자 힌트: '+activeCard().blanks.map(k=>k[0]||'').join(' · '):''}
+ if(el){el.hidden=!session.hint;el.textContent=session.hint?'앞글자 힌트: '+studyHintText():''}
  document.querySelectorAll('[data-study-hint]').forEach(button=>{button.textContent='힌트 '+(session.hint?'접기':'보기')});
 })}
