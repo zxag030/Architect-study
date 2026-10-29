@@ -37,7 +37,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   assert.equal(await page.evaluate(()=>dailyStats().completed),1);
   assert.equal(await page.evaluate(()=>reviewStats().concepts),0);
   assert.equal(await page.evaluate(()=>pillStatus('unrated')),'평가 대기');
-  assert.equal(await page.evaluate(()=>availableReview(data.cards.find(c=>c.id==='q002'))),false);
+  assert.equal(await page.evaluate(()=>availableReview(data.cards.find(c=>c.id==='q002'))),true);
   await page.evaluate(()=>nav('review'));assert.match(await page.locator('.main').innerText(),/평가 대기/);
   // Ambiguous legacy classifications, completed reviews and old progress remain unchanged.
   assert.equal(await page.evaluate(()=>pr('q003').status),'weak');assert.equal(await page.evaluate(()=>pr('q004').status),'master');
@@ -46,14 +46,17 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   await page.evaluate(()=>{startOne('q003','learn');session.stage=3;session.repeat=10;session.blankPassed=true;session.free=activeCard().answer;completeLearning()});
   assert.equal(await page.evaluate(()=>pr('q003').status),'weak');assert.equal(await page.evaluate(()=>pr('q003').due),'2026-10-27');
   assert.equal(await page.evaluate(()=>pr('q003').reviewCount),2);
+  assert.equal(await page.evaluate(()=>dailyStats().completed),1);
+  assert.equal(await page.evaluate(()=>data.dailyCompletions[today].includes('q003')),false);
   await page.evaluate(async()=>{let backup;const d=download;download=(n,t)=>{backup=t};exportJSON();download=d;const c=confirm;window.confirm=()=>true;await importJSON({text:async()=>backup});window.confirm=c});
   await page.reload();assert.equal(await page.evaluate(()=>pr('q002').status),'unrated');
   await page.clock.fastForward(24*60*60*1000);
   assert.equal(await page.evaluate(()=>reviewQueue().some(c=>c.id==='q002')),true);
-  await page.evaluate(()=>startOne('q002','review'));
+  await page.evaluate(()=>startSession([data.cards.find(c=>c.id==='q002')],'review','manual','free'));
   assert.equal(await page.evaluate(()=>session.stage),3);assert.equal(await page.evaluate(()=>session.copyTarget),0);
-  assert.equal(await page.locator('[data-study-hint]').count(),0);
-  await page.evaluate(()=>toggleStudyHint());assert.equal(await page.evaluate(()=>session.hint),false);
+  assert.equal(await page.locator('[data-study-hint]').count(),1);
+  await page.locator('[data-study-hint]').click();await page.waitForFunction(()=>session.hint);
+  assert.equal((await page.locator('#study-hint').innerText()).includes('높이 기준'),false);
   await page.locator('#freeInput').fill(await page.evaluate(()=>activeCard().answer));
   await page.locator('button[onclick="reveal()"]').click();await page.waitForFunction(()=>session.revealed);
   assert.match(await page.locator('.studybox').innerText(),/키워드 기반 자동 평가/);
@@ -62,16 +65,23 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   assert.equal(await page.evaluate(()=>pr('q002').firstAssessedAt),'2026-10-26');
   assert.equal(await page.evaluate(()=>dailyStats().completed),0);
   assert.equal(await page.evaluate(()=>reviewQueue().some(c=>c.id==='q002')),false);
-  assert.equal(await page.evaluate(()=>availableReview(data.cards.find(c=>c.id==='q002'))),false);
-  await page.evaluate(()=>startOne('q002','random'));assert.equal(await page.evaluate(()=>session),null);
-  // Tomorrow uses the first saved review rating, and all classified paths remain distinct.
+  assert.equal(await page.evaluate(()=>availableReview(data.cards.find(c=>c.id==='q002'))),true);
+  // Explicit review is available for every grade even after today's unique completion.
+  await page.evaluate(()=>startSession([data.cards.find(c=>c.id==='q002')],'review','manual','free'));
+  assert.equal(await page.evaluate(()=>session.stage),3);
+  assert.equal(await page.evaluate(()=>reviewStats().concepts),1);
+  await page.evaluate(()=>nav('review'));
+  // Tomorrow modes remain independent of saved mastery, rather than forced adaptive chains.
   await page.clock.fastForward(24*60*60*1000);
-  await page.evaluate(()=>startOne('q002','review'));assert.equal(await page.evaluate(()=>session.stage),2);
-  await page.evaluate(()=>{nav('today');startOne('q004','review')});assert.equal(await page.evaluate(()=>session.stage),3);
-  await page.evaluate(()=>{nav('today');data.progress.q005={status:'unknown',count:1,first:'2026-10-20',last:'2026-10-24',due:today};startOne('q005','review')});assert.equal(await page.evaluate(()=>session.stage),0);
+  await page.evaluate(()=>startSession([data.cards.find(c=>c.id==='q002')],'review','manual','copy'));
+  assert.equal(await page.evaluate(()=>session.stage),1);assert.equal(await page.evaluate(()=>session.copyTarget),3);
+  await page.evaluate(()=>{nav('today');startSession([data.cards.find(c=>c.id==='q004')],'review','manual','blank')});
+  assert.equal(await page.evaluate(()=>session.stage),2);
+  await page.evaluate(()=>{nav('today');data.progress.q005={status:'unknown',count:1,first:'2026-10-20',last:'2026-10-24',due:today};startSession([data.cards.find(c=>c.id==='q005')],'review','manual','free')});
+  assert.equal(await page.evaluate(()=>session.stage),3);
   // Importing an older backup without provenance is non-destructive and does not guess ratings.
   await page.evaluate(async()=>{nav('today');const legacy=JSON.parse(JSON.stringify(data));delete legacy.reviewDays;for(const p of Object.values(legacy.progress)){delete p.assessmentOrigin;delete p.firstAssessedAt;delete p.lastAssessedAt}const c=confirm;window.confirm=()=>true;await importJSON({text:async()=>JSON.stringify(legacy)});window.confirm=c});
   assert.equal(await page.evaluate(()=>pr('q003').reviewCount),2);assert.equal(await page.evaluate(()=>pr('q004').status),'master');
-  assert.deepEqual(errors,[]);console.log(engine.name()+': initial unrated, no initial assessment, next-day first assessment without hints, same-day exclusions, distinct paths, records and backup passed');
+  assert.deepEqual(errors,[]);console.log(engine.name()+': unchanged new-learning stages, initial unrated, independent manual review, unique completion, legacy records and backup passed');
  }finally{await browser.close();server.close()}
 })().catch(e=>{console.error(e);process.exit(1)});
