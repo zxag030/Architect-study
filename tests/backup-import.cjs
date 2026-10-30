@@ -28,7 +28,7 @@ const event=(id,cardId,date,mode,extra={})=>({id,cardId,date,at:date+'T10:00:00.
    settings:{dailyTargets:{'2026-10-29':7},localSetting:{keep:true}},
    futureLocal:{nested:{keep:'local'}},selected:'2026-10-29',version:2,exportedAt:'2026-10-01'
   };
-  await page.evaluate(payload=>{data=normalizeStudyData(payload);localStorage.setItem(STORE_KEY,JSON.stringify(data));view='today';render()},local);
+  await page.evaluate(payload=>{data=normalizeStudyData(payload);save();view='today';render()},local);
   const before=await page.evaluate(()=>JSON.stringify(data));
   const legacy={cards:[card('shared',{answer:'다른 기기의 정답'}),card('legacy-only')],progress:{shared:{status:'unknown',count:6,reviewCount:1,first:'2026-10-22',last:'2026-10-29',due:'2026-10-30',updatedAt:'2026-10-29T10:00:00Z'},'legacy-only':{status:'unrated',count:1,first:'2026-10-28',due:'2026-10-29'}},dailyCompletions:{'2026-10-28':['legacy-only']},settings:{dailyTargets:{'2026-10-29':12},remoteSetting:true,reviewSetup:{mode:'copy',target:'all',limit:'all',grades:['master'],shuffle:false}},futureRemote:{keep:[1,2]},version:2,exportedAt:'2026-10-02'};
   async function importAndApply(payload){

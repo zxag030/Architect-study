@@ -96,7 +96,7 @@ function applyBackupMerge(){return withStudyInputCommit(()=>{
   }
   const serialized=JSON.stringify(merged);
   localStorage.setItem(STORE_KEY+'-before-import',p.before);
-  localStorage.setItem(STORE_KEY,serialized);
+  localStorage.setItem(STORE_KEY,serialized);noteStudyStorageWrite(serialized);
   if(typeof cancelReviewDraftSave==='function')cancelReviewDraftSave();
   data=merged;session=null;pendingBackupMerge=null;modal=null;loadReviewSetup();render();
   alert('백업 병합 완료 · 보존된 충돌 '+(data.backupConflicts?.length||0)+'건. 원본과 선택하지 않은 복습 초안도 전체 백업에 포함됩니다.');

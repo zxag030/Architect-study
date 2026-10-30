@@ -1,6 +1,8 @@
 // Review drafts stay on this device and in JSON backups. Editor nodes are read,
 // never changed, when a native IME composition is being saved for later.
 let reviewDraftTimer=0,reviewDraftSaveFailed=false,pendingReviewArchive=null,reviewExternalStorageChange=false;
+let reviewKnownStorageValue=loadedStudyStorage;
+function noteStudyStorageWrite(serialized){reviewKnownStorageValue=serialized;reviewExternalStorageChange=false}
 const REVIEW_DRAFT_FIELDS=['stage','stages','copyTarget','requiresBlanks','entryStatus','answerConfirmed','answerSeen','answerViewed','hintUsed','typed','free','blank','revealed','checked','hint','repeat','blankPassed','copyDrafts','copyChecked','copyResults','copyAnswerHidden'];
 function reviewPlain(value){return !!value&&typeof value==='object'&&!Array.isArray(value)}
 function reviewCardSignature(card){return JSON.stringify([card.q,card.answer,card.blanks])}
@@ -44,6 +46,9 @@ function addPendingReviewArchive(target){if(pendingReviewArchive)appendReviewArc
 function cancelReviewDraftSave(){if(reviewDraftTimer)clearTimeout(reviewDraftTimer);reviewDraftTimer=0}
 function reviewDraftStatus(message){const el=document.getElementById('review-draft-status');if(el)el.textContent=message}
 function reviewStorageWriteAllowed(notify=false){
+ // A queued storage event can describe a write the new document already read
+ // during reload. Compare the actual record with the exact last read/write.
+ try{reviewExternalStorageChange=localStorage.getItem(STORE_KEY)!==reviewKnownStorageValue}catch(error){return true}
  if(!reviewExternalStorageChange)return true;
  const message='다른 탭에서 학습 기록이 변경되어 자동 저장을 멈췄습니다. 현재 초안을 JSON 백업한 뒤 새로고침하고 기록 병합을 이용해 주세요.';reviewDraftStatus(message);
  if(notify)alert(message);return false;
@@ -53,7 +58,7 @@ function persistReviewSession(notify=false){
  if(!reviewStorageWriteAllowed(notify))return false;
  try{
   const record=snapshotReviewSession(),next={...data,reviewSession:record,reviewSessionArchive:[...(data.reviewSessionArchive||[])]};addPendingReviewArchive(next);
-  localStorage.setItem(STORE_KEY,JSON.stringify(next));data.reviewSession=record;
+  const serialized=JSON.stringify(next);localStorage.setItem(STORE_KEY,serialized);noteStudyStorageWrite(serialized);data.reviewSession=record;
   if(next.reviewSessionArchive.length)data.reviewSessionArchive=next.reviewSessionArchive;
   pendingReviewArchive=null;reviewDraftSaveFailed=false;reviewDraftStatus('이 기기에 초안을 자동 저장했습니다.');return true;
  }catch(error){
@@ -98,7 +103,7 @@ function resumeReviewSession(){return withStudyInputCommit(()=>{
  }
  if(record.idx>=record.ids.length){
   const next={...data,reviewSession:null,reviewSessionArchive:[...(data.reviewSessionArchive||[])]};appendReviewArchive(next,record,'completed-or-unavailable');
-  try{localStorage.setItem(STORE_KEY,JSON.stringify(next));data=next;session=null;view='review';render();alert(missing?'목록의 문제가 현재 문제은행에 없습니다. 초안은 보관하고 완료 기록은 유지했습니다.':'이미 저장된 완료 기록을 확인했습니다. 중복 집계하지 않습니다.')}catch(error){alert('복습 상태 저장에 실패했습니다. 기존 초안은 유지됩니다.')}
+  try{const serialized=JSON.stringify(next);localStorage.setItem(STORE_KEY,serialized);noteStudyStorageWrite(serialized);data=next;session=null;view='review';render();alert(missing?'목록의 문제가 현재 문제은행에 없습니다. 초안은 보관하고 완료 기록은 유지했습니다.':'이미 저장된 완료 기록을 확인했습니다. 중복 집계하지 않습니다.')}catch(error){alert('복습 상태 저장에 실패했습니다. 기존 초안은 유지됩니다.')}
   return;
  }
  const id=record.ids[record.idx],card=data.cards.find(card=>card.id===id),draft=record.drafts?.[id]||(record.idx===original.idx?reviewDraftFromSession(record):{});
@@ -130,7 +135,7 @@ function endReviewSession(reason='ended'){return withStudyInputCommit(()=>{
  if(!reviewStorageWriteAllowed(true)||!suspendReviewSession())return;const record=data.reviewSession;if(!record)return;
  if(!confirm(reason==='restarted'?'진행 중인 초안을 보관하고 새 복습을 선택할까요? 완료한 학습 기록은 유지됩니다.':'진행 중 복습을 종료할까요? 완료 기록과 초안 사본은 보관합니다.'))return;
  const next={...data,reviewSession:null,reviewSessionArchive:[...(data.reviewSessionArchive||[])]};appendReviewArchive(next,record,reason);
- try{localStorage.setItem(STORE_KEY,JSON.stringify(next));data=next;pendingReviewArchive=null;cancelReviewDraftSave();if(session?.mode==='review')session=null;view='review';render()}
+ try{const serialized=JSON.stringify(next);localStorage.setItem(STORE_KEY,serialized);noteStudyStorageWrite(serialized);data=next;pendingReviewArchive=null;cancelReviewDraftSave();if(session?.mode==='review')session=null;view='review';render()}
  catch(error){alert('복습 종료 상태를 저장하지 못했습니다. 기존 초안은 유지됩니다.')}
 })}
 function stageReviewCompletionSnapshot(){
@@ -147,6 +152,6 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)persistRevi
 // A second tab is a separate writer. Preserve both drafts instead of allowing
 // debounced autosave to overwrite a record this tab has never loaded.
 window.addEventListener('storage',event=>{
- if(event.key!==STORE_KEY||event.oldValue===event.newValue)return;
- reviewExternalStorageChange=true;cancelReviewDraftSave();reviewStorageWriteAllowed(false);
+ if(event.key!==STORE_KEY&&event.key!==null)return;
+ if(!reviewStorageWriteAllowed(false))cancelReviewDraftSave();
 });
