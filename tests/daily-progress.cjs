@@ -13,6 +13,7 @@ const server = require('node:http').createServer((req,res)=>{
  for(const engine of (process.env.TEST_WEBKIT ? [chromium,webkit] : [chromium])){
  const browser=await engine.launch({headless:true,...(engine===chromium?{executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium'}:{})});
  const page=await browser.newPage({viewport:{width:820,height:1180}});
+ page.on('dialog',dialog=>dialog.accept());
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-25T12:00:00')});
  await page.goto('http://127.0.0.1:'+server.address().port);
@@ -24,7 +25,11 @@ const server = require('node:http').createServer((req,res)=>{
  // Exercise the actual ten-copy, blank-check, assessment, and save flow.
  async function complete(){
  await page.evaluate(()=>startOne('q001','learn'));
- for(let i=0;i<10;i++){await page.locator('#typing').fill(await page.evaluate(()=>activeCard().answer));await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(i=>session.repeat===i+1,i)}
+ assert.equal(await page.locator('.copyInput').count(),10);
+ const copies=page.locator('.copyInput');
+ for(let i=0;i<10;i++){await page.waitForFunction(()=>!studyInputBusy());await copies.nth(i).click();await copies.nth(i).fill(await page.evaluate(()=>activeCard().answer));}
+ await page.locator('button[onclick="advance()"]').click();
+ await page.waitForFunction(()=>session.stage===2);
  assert.equal(await page.evaluate(()=>session.stage),2);
  await page.locator('button[onclick="checkBlanks()"]').click();
  assert.equal(await page.evaluate(()=>session.blankPassed),false);
@@ -39,7 +44,7 @@ const server = require('node:http').createServer((req,res)=>{
  await complete();
  assert.deepEqual(await stats(),{goal:18,completed:1,remaining:17,percent:6});
  // Repeat without the pre-save assertion, then verify no duplicate.
- await page.evaluate(()=>{startOne('q001','learn');session.stage=3;session.repeat=10;session.blankPassed=true;session.free=activeCard().answer;completeLearning()});
+ await page.evaluate(()=>{startOne('q001','learn');session.stage=3;session.copyDrafts=Array(10).fill(activeCard().answer);session.copyChecked=true;session.repeat=10;session.blankPassed=true;session.free=activeCard().answer;completeLearning()});
  assert.equal((await stats()).completed,1);
  await page.evaluate(()=>{data.progress.q003={status:'master',count:1};startOne('q003','review');session.revealed=true;rate('master')});
  assert.equal((await stats()).completed,1);
@@ -49,7 +54,7 @@ const server = require('node:http').createServer((req,res)=>{
  await page.evaluate(async()=>{
   let backup;const original=download;download=(name,text)=>{backup=text};exportJSON();download=original;
   const oldConfirm=window.confirm;window.confirm=()=>true;
-  await importJSON({text:async()=>backup});window.confirm=oldConfirm;
+  await importJSON({text:async()=>backup});await applyBackupMerge();window.confirm=oldConfirm;
  });
  assert.equal((await stats()).completed,1);
  await page.reload();assert.equal((await stats()).completed,1);

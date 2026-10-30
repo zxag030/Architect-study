@@ -16,19 +16,21 @@ function availableReview(){return true} // Explicit practice is always available
 function rereviewQueue(){return []} // Old pending fields are retained in backups; no forced adaptive loop.
 function unratedReady(){return true}
 function newReviewId(){return globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)}
-function prepareSessionCard(){
- const learn=session.mode==='learn',stage=learn?1:({copy:1,blank:2,free:3}[session.reviewMode]||3);
- Object.assign(session,{stage,stages:learn?[1,2,3]:[stage],copyTarget:learn?10:session.reviewMode==='copy'?3:0,
- requiresBlanks:learn||session.reviewMode==='blank',entryStatus:pr(session.ids[session.idx]).status,
- answerConfirmed:false,answerSeen:false,typed:'',free:'',blank:[],revealed:false,checked:false,hint:false,repeat:0,blankPassed:false});
+function prepareSessionCard(target=session){
+ const learn=target.mode==='learn',stage=learn?1:({copy:1,blank:2,free:3}[target.reviewMode]||3);
+ Object.assign(target,{stage,stages:learn?[1,2,3]:[stage],copyTarget:learn?10:target.reviewMode==='copy'?3:0,
+ requiresBlanks:learn||target.reviewMode==='blank',entryStatus:pr(target.ids[target.idx]).status,
+ answerConfirmed:false,answerSeen:false,answerViewed:false,hintUsed:false,typed:'',free:'',blank:[],revealed:false,checked:false,hint:false,repeat:0,blankPassed:false,
+ copyDrafts:Array(learn?10:target.reviewMode==='copy'?3:0).fill(''),copyChecked:false,copyResults:[],copyAnswerHidden:false});
 }
 function sessionCopies(){return session.copyTarget??10}
-function adaptiveReady(){return (!session.requiresBlanks||session.blankPassed)&&(!session.copyTarget||session.repeat>=session.copyTarget)}
+function adaptiveReady(){return (!session.requiresBlanks||session.blankPassed)&&(!session.copyTarget||(typeof copyWorkbookReady==='function'?copyWorkbookReady():session.repeat>=session.copyTarget))}
 function sessionSteps(){
  const names={1:`따라 쓰기 ${sessionCopies()}회`,2:'핵심 빈칸',3:session.mode==='learn'?'백지서술 연습':'백지서술'};
  return `<div class="tiny muted" style="margin-bottom:12px">${session.mode==='learn'?'신규 학습':'독립 복습 · '+pillStatus(session.entryStatus)}</div><div class="stepbar">${session.stages.map(i=>`<span class="step ${i===session.stage?'active':i<session.stage?'done':''}">${names[i]}</span>`).join('')}</div>`;
 }
-function finishSessionCard(){
+function finishSessionCard(savedReview=false){
+ if(savedReview){const n=session.ids.length;clearPendingReviewArchive();session=data.reviewSession?structuredClone(data.reviewSession):null;if(session){renderSession()}else{view='review';render();alert(`${n}개 문제의 선택한 모드 복습을 완료했습니다.`)}return}
  session.idx++;
  if(session.idx>=session.ids.length){const n=session.ids.length,learn=session.mode==='learn';session=null;view=learn?'today':'review';render();alert(`${n}개 문제의 ${learn?'신규 학습':'선택한 모드 복습'}을 완료했습니다.`)}
  else{prepareSessionCard();renderSession()}
@@ -50,17 +52,17 @@ function reviewInterval(status,p,date){
 function saveReviewResult(status,graded){
  if(!session||session.mode==='learn')return;
  today=nowLocal();const before=structuredClone(data),c=activeCard(),p=pr(c.id),id=session.id+':'+session.idx;
- data.reviewHistory??=[];if(data.reviewHistory.some(e=>e.id===id))return;
+ data.reviewHistory??=[];if(data.reviewHistory.some(e=>e.id===id)){stageReviewCompletionSnapshot();if(!save()){data=before;return}finishSessionCard(true);return}
  const r=reviewRecord(c.id),at=new Date().toISOString(),newConcept=isNewConcept(c);
  const plan=graded?reviewInterval(status,p,today):{days:p.reviewInterval||({master:4,weak:2,unknown:1}[p.status]||1),streak:p.reviewStreak||0};
  const nextDue=plusDays(today,plan.days);
- data.reviewHistory.push({id,cardId:c.id,date:today,at,mode:session.reviewMode,status,nextDue,intervalDays:plan.days,graded,answerViewed:session.answerSeen});
+ data.reviewHistory.push({id,cardId:c.id,date:today,at,mode:session.reviewMode,status,nextDue,intervalDays:plan.days,graded,hintUsed:!!(session.hintUsed||session.hint),answerViewed:!!(session.answerViewed||session.answerSeen||session.revealed)});
  data.reviewDays??={};data.reviewDays[today]??={};
  data.reviewDays[today][c.id]={...r,completed:true,attempts:(r.attempts||0)+1,modes:uniq([...(r.modes||[]),session.reviewMode]),pending:false};
  data.progress[c.id]={...p,status,learningCompleted:!newConcept,last:today,lastReviewedAt:today,due:nextDue,updatedAt:at,
  count:(p.count||0)+1,reviewCount:(p.reviewCount||0)+(r.completed?0:1),reviewInterval:plan.days,reviewStreak:plan.streak,
  ...(graded?{assessmentOrigin:'review',lastAssessedAt:today,firstAssessedAt:p.firstAssessedAt||(p.status==='unrated'?today:undefined)}:{})};
- if(!save()){data=before;return}finishSessionCard();
+ stageReviewCompletionSnapshot();if(!save()){data=before;return}finishSessionCard(true);
 }
 function completeModeReview(){return withStudyInputCommit(()=>{
  if(!session||session.mode==='learn'||session.reviewMode==='free')return;
@@ -69,7 +71,7 @@ function completeModeReview(){return withStudyInputCommit(()=>{
 })}
 function showReviewAnswer(){return withStudyInputCommit(()=>{
  if(session?.mode==='learn'||session?.reviewMode!=='blank')return;
- session.answerSeen=true;const box=document.getElementById('review-answer');if(box){box.hidden=false;box.textContent=activeCard().answer}
+ session.answerSeen=true;session.answerViewed=true;const box=document.getElementById('review-answer');if(box){box.hidden=false;box.textContent=activeCard().answer}persistReviewSession();
 })}
 function reviewCandidates(setup=reviewSetup){
  const selected=new Set(setup.grades),weight={unknown:0,weak:1,master:2,unrated:3,new:4};

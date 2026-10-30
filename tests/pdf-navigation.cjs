@@ -74,7 +74,11 @@ async function tap(page, selector) {
     await page.route('**/legacy/build/pdf.mjs', async route => { await libraryGate; await route.continue(); });
     await page.goto(url);
     await page.evaluate(() => { startOne('q001', 'learn'); });
-    await page.locator('#typing').fill('계속 작성 중인 답안');
+    assert.equal(await page.locator('.copyInput').count(), 10);
+    await page.locator('.copyInput').nth(0).click();
+    await page.locator('.copyInput').nth(0).fill('계속 작성 중인 답안');
+    await page.locator('.copyInput').nth(1).click();
+    await page.locator('.copyInput').nth(1).fill('다른 회차의 독립 답안');
     await page.getByRole('button', { name: '교재 보기 · 80쪽', exact: true }).click();
     await page.locator('.modal input[type=file]').setInputFiles({ name: 'local.pdf', mimeType: 'application/pdf', buffer: fixture() });
     await page.waitForFunction(() => pdfState.file && pdfState.message.includes('저장됨'));
@@ -111,7 +115,8 @@ async function tap(page, selector) {
     await page.locator('#viewer-offset').fill('-78');
     await tap(page, '#pdf-next'); await displayed(page, 3);
     await page.getByRole('button', { name: '닫기', exact: true }).click();
-    assert.equal(await page.locator('#typing').inputValue(), '계속 작성 중인 답안');
+    assert.equal(await page.locator('.copyInput').nth(0).inputValue(), '계속 작성 중인 답안');
+    assert.equal(await page.locator('.copyInput').nth(1).inputValue(), '다른 회차의 독립 답안');
     await page.getByRole('button', { name: '교재 보기 · 80쪽', exact: true }).click();
     await displayed(page, 2);
     await page.getByRole('button', { name: '닫기', exact: true }).click();
