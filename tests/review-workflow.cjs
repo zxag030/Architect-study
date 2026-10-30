@@ -14,6 +14,7 @@ const server=http.createServer((req,res)=>{
  const browser=await engine.launch(engine===chromium?{headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium'}:{headless:true});
  try{
   const page=await browser.newPage({viewport:{width:820,height:1180},hasTouch:true}),errors=[];
+  page.on('dialog',dialog=>dialog.accept());
   page.on('pageerror',e=>errors.push(e.message));
   await page.clock.install({time:new Date('2026-10-29T12:00:00')});
   await page.goto('http://127.0.0.1:'+server.address().port);
@@ -78,12 +79,14 @@ const server=http.createServer((req,res)=>{
   assert.ok(await page.evaluate(()=>session.ids.length>0));await leave();
   // Copy review finishes after three exact repetitions, without blanks or free recall.
   await selectOne('review-test-00','copy');assert.equal(await page.evaluate(()=>session.stage),1);
-  await page.locator('#typing').fill('오답');await page.locator('button[onclick="advance()"]').click();
+  assert.equal(await page.locator('.copyInput').count(),3);
+  await page.locator('.copyInput').first().click();await page.locator('.copyInput').first().fill('오답');await page.locator('button[onclick="advance()"]').click();
   assert.equal(await page.evaluate(()=>session.repeat),0);
-  for(let i=1;i<=3;i++){
-   await page.locator('#typing').fill(await page.evaluate(()=>activeCard().answer));
-   await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(n=>session.repeat===n,i);
+  for(let i=0;i<3;i++){
+   await page.waitForFunction(()=>!studyInputBusy());await page.locator('.copyInput').nth(i).click();
+   await page.locator('.copyInput').nth(i).fill(await page.evaluate(()=>activeCard().answer));
   }
+  await page.locator('button[onclick="advance()"]').click();await page.waitForFunction(()=>session.repeat===3);
   assert.equal(await page.evaluate(()=>session.stage),1);
   assert.equal(await page.locator('.blankInput,#freeInput').count(),0);
   await page.locator('button[onclick="completeModeReview()"]').click();await page.waitForFunction(()=>!session);
@@ -112,12 +115,14 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('.blankInput.right,.blankInput.wrong,.blank-feedback').count(),0);
   await fillBlanks();await page.locator('button[onclick="checkBlanks()"]').click();await page.waitForFunction(()=>session.blankPassed);
   assert.equal(await page.evaluate(()=>session.stage),2);
-  assert.equal(await page.locator('#freeInput,#typing').count(),0);
+  assert.equal(await page.locator('#freeInput,.copyInput').count(),0);
   await page.locator('button[onclick="completeModeReview()"]').click();await page.waitForFunction(()=>!session);
   assert.equal(await page.evaluate(()=>reviewStats().concepts),1); // same card/day, different mode
   assert.equal(await page.evaluate(()=>reviewStats().attempts),2);
   assert.equal(await page.evaluate(()=>pr('review-test-00').reviewCount),5);
   assert.equal(await page.evaluate(()=>data.reviewHistory.length),historyBefore+1);
+  assert.equal(await page.evaluate(()=>data.reviewHistory.at(-1).hintUsed),true);
+  assert.equal(await page.evaluate(()=>data.reviewHistory.at(-1).answerViewed),true);
   assert.equal(await page.evaluate(()=>pr('review-test-00').status),'unknown');
   // Manual free-recall rating wins over the keyword recommendation and gives base intervals.
   await classify('review-test-01','master','전혀 모르겠습니다');

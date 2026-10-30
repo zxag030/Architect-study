@@ -142,6 +142,8 @@
   }
   if(input.reviewHistory!=null&&(!Array.isArray(input.reviewHistory)||!input.reviewHistory.every(event=>plain(event)&&typeof event.id==='string'&&event.id&&typeof event.cardId==='string'&&event.cardId&&typeof event.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(event.date)&&typeof event.mode==='string'&&event.mode)))throw new Error('잘못된 문제별 복습 이력입니다.');
   if(input.backupConflicts!=null&&(!Array.isArray(input.backupConflicts)||!input.backupConflicts.every(entry=>plain(entry)&&typeof entry.path==='string'&&Array.isArray(entry.values))))throw new Error('잘못된 백업 충돌 보관 기록입니다.');
+  if(input.reviewSession!=null&&!plain(input.reviewSession))throw new Error('잘못된 복습 세션입니다.');
+  if(input.reviewSessionArchive!=null&&(!Array.isArray(input.reviewSessionArchive)||!input.reviewSessionArchive.every(plain)))throw new Error('잘못된 복습 세션 원본 보관 목록입니다.');
   const out=clone(input);
   for(const key of ['progress','dailyCompletions','reviewDays','settings'])put(out,key,clone(mapOrEmpty(input[key],key)));
   for(const date of Object.keys(out.dailyCompletions))put(out.dailyCompletions,date,[...new Set(out.dailyCompletions[date])]);
@@ -154,7 +156,7 @@
  function mergeStudyData(local,incoming){
   const left=normalizeStudyData(local),right=normalizeStudyData(incoming);
   const context=conflictContext([...left.backupConflicts,...right.backupConflicts]);
-  const special=new Set(['cards','progress','dailyCompletions','reviewDays','reviewHistory','backupConflicts']);
+  const special=new Set(['cards','progress','dailyCompletions','reviewDays','reviewHistory','backupConflicts','reviewSession','reviewSessionArchive']);
   const out=clone(left);
   // Merge unknown/additive top-level data too; never discard a future field.
   for(const key of Object.keys(right)){
@@ -183,6 +185,19 @@
    put(out.reviewDays,date,next);
   }
   out.reviewHistory=combineHistory(left.reviewHistory,right.reviewHistory,context);
+  // A draft is one transaction: combining its individual fields could pair one
+  // device's question order with the other device's answers. Keep whole variants
+  // and let the importing UI explicitly choose which conflicting session resumes.
+  const archives=[];
+  function archive(value){if(plain(value)&&!archives.some(item=>same(item,value)))archives.push(clone(value))}
+  for(const value of [...(left.reviewSessionArchive||[]),...(right.reviewSessionArchive||[])])archive(value);
+  const current=left.reviewSession,incomingSession=right.reviewSession;
+  if(current&&incomingSession&&!same(current,incomingSession)){
+   out.reviewSession=clone(current);archive(current);archive(incomingSession);
+   context.preserve('/reviewSession',current,incomingSession,current,'review-session-conflict');
+  }else if(!current&&incomingSession)out.reviewSession=clone(incomingSession);
+  // A legacy backup without a session cannot erase the current draft.
+  if(archives.length||own(left,'reviewSessionArchive')||own(right,'reviewSessionArchive'))out.reviewSessionArchive=archives;
   out.backupConflicts=context.conflicts;
   return reconcileHistory(out,context);
  }

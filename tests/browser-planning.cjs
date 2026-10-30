@@ -19,6 +19,7 @@ const server = http.createServer((req, res) => {
   try {
     const page = await browser.newPage({ viewport: { width: 820, height: 1180 }, timezoneId: 'Asia/Seoul', hasTouch: true });
     const errors = [];
+    page.on('dialog', dialog => dialog.accept());
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install({ time: new Date('2026-10-29T03:00:00Z') });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -82,12 +83,14 @@ const server = http.createServer((req, res) => {
     await page.locator('button[onclick="startOne(\'q002\',\'learn\')"]').click();
     assert.equal(await page.evaluate(() => session.mode), 'learn');
     assert.equal(await page.evaluate(() => session.copyTarget), 10);
-    for (let repetition = 1; repetition <= 10; repetition++) {
-      await page.locator('#typing').fill(await page.evaluate(() => activeCard().answer));
-      await page.locator('button[onclick="advance()"]').click();
-      await page.waitForFunction(n => session.repeat === n, repetition);
-      if (repetition < 10) assert.equal(await page.evaluate(() => session.stage), 1);
+    assert.equal(await page.locator('.copyInput').count(), 10);
+    for (let repetition = 0; repetition < 10; repetition++) {
+      await page.waitForFunction(() => !studyInputBusy());
+      await page.locator('.copyInput').nth(repetition).click();
+      await page.locator('.copyInput').nth(repetition).fill(await page.evaluate(() => activeCard().answer));
+      assert.equal(await page.evaluate(() => session.stage), 1);
     }
+    await page.locator('button[onclick="advance()"]').click();
     await page.waitForFunction(() => session.stage === 2);
     const blanks = page.locator('.blankInput');
     for (let i = 0; i < await blanks.count(); i++) {

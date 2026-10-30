@@ -19,12 +19,22 @@ async function pdfStore(mode,value){
  tx.oncomplete=()=>{db.close();resolve(req.result)};
  tx.onerror=tx.onabort=()=>{db.close();reject(tx.error||req.error||new Error('PDF 저장 실패'))};
 })}
-function pdfSelectionHtml(page){return `<div class="btnrow"><label class="btn" style="cursor:pointer">PDF ${pdfState.file?'다시 선택':'선택'}<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="loadPdf(this.files[0],${page===undefined?'undefined':Number(page)})"></label><span class="tiny muted pdf-name pdf-file-status" role="status">${safe(pdfState.name)} ${safe(pdfState.message)}</span></div>`}
+function pdfSelectionHtml(page){return `<div class="btnrow"><label class="btn" style="cursor:pointer"><span class="pdf-selection-label">PDF ${pdfState.file?'다시 선택':'선택'}</span><input type="file" accept="application/pdf,.pdf" style="display:none" onchange="loadPdf(this.files[0],${page===undefined?'undefined':Number(page)})"></label><span class="tiny muted pdf-name pdf-file-status" role="status">${safe(pdfState.name)} ${safe(pdfState.message)}</span></div>`}
 async function restorePdf(){const generation=pdfState.loading;try{
  const record=await pdfStore('readonly');if(generation!==pdfState.loading)return;
  if(record?.bytes instanceof ArrayBuffer||record?.blob instanceof Blob){pdfState.file=record.bytes?new Blob([record.bytes],{type:'application/pdf'}):record.blob;pdfState.name=record.name||'저장된 교재';pdfState.offset=Number.isInteger(record.offset)?record.offset:0;pdfState.message='기기에 저장된 PDF를 자동 연결했습니다.';
- if(modal?.type==='notpdf')modal.type='pdf';render()}
- }catch(e){if(generation!==pdfState.loading)return;pdfState.message='저장된 PDF를 읽을 수 없습니다. 파일을 다시 선택해 주세요.';render()}
+ refreshRestoredPdfUi()}
+ }catch(e){if(generation!==pdfState.loading)return;pdfState.message='저장된 PDF를 읽을 수 없습니다. 파일을 다시 선택해 주세요.';refreshRestoredPdfUi()}
+}
+// Background IndexedDB restoration must not replace buttons or draft inputs
+// between a user's touch-down and click. Only a viewer transition needs render.
+function refreshRestoredPdfUi(){
+ if(modal?.type==='notpdf'&&pdfState.file){modal.type='pdf';render();return}
+ refreshPdfNotice();
+ document.querySelectorAll('.pdf-selection-label').forEach(label=>{label.textContent='PDF '+(pdfState.file?'다시 선택':'선택')});
+ for(const id of ['pdf-offset','viewer-offset']){
+  const input=document.getElementById(id);if(input&&document.activeElement!==input)input.value=pdfState.offset;
+ }
 }
 async function pdfJs(){
  if(!pdfLibrary){

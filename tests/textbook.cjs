@@ -7,16 +7,19 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await (process.env.TEST_WEBKIT?webkit:chromium).launch(process.env.TEST_WEBKIT?{headless:true}:{executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true});try{
  const page=await browser.newPage({viewport:{width:820,height:1180}});const errors=[],outbound=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:')&&!r.url().startsWith('blob:'))outbound.push(r.url());assert.equal(r.method(),'GET')});
  await page.goto('http://127.0.0.1:'+server.address().port);await page.evaluate(()=>restorePdf());
- await page.evaluate(()=>{data.progress.q002={status:'weak',count:8};save();startOne('q001','learn')});await page.locator('#typing').fill('작성 중인 따라 쓰기');
+ await page.evaluate(()=>{data.progress.q002={status:'weak',count:8};save();startOne('q001','learn')});
+ assert.equal(await page.locator('.copyInput').count(),10);
+ await page.locator('.copyInput').nth(0).click();await page.locator('.copyInput').nth(0).fill('작성 중인 따라 쓰기');
+ await page.locator('.copyInput').nth(1).click();await page.locator('.copyInput').nth(1).fill('두 번째 칸의 독립 초안');
  await page.evaluate(()=>openSource(80));assert.match(await page.locator('.modal').innerText(),/선택/);
  await page.locator('.modal input[type=file]').setInputFiles({name:'test.pdf',mimeType:'application/pdf',buffer:fixture()});
  await page.waitForFunction(()=>pdfState.file&&pdfState.message.includes('저장됨'),null,{timeout:10000}).catch(async e=>{console.error(await page.evaluate(async()=>{try{await pdfStore('readwrite',{blob:pdfState.file});return 'saved'}catch(e){return {name:e.name,message:e.message}}}),errors);throw e});
  await page.locator('#viewer-offset').fill('-79');await page.locator('#viewer-offset').dispatchEvent('change');
  await page.waitForFunction(()=>document.getElementById('pdf-status')?.textContent.includes('PDF 1/2'));
  assert.ok(await page.locator('#pdf-canvas').evaluate(el=>el.width>0&&el.height>0));
- await page.getByRole('button',{name:'다음 페이지',exact:true}).click();await page.waitForFunction(()=>document.getElementById('pdf-status')?.textContent.includes('PDF 2/2'));
+ await page.getByRole('button',{name:'다음 페이지',exact:true}).click();await page.waitForFunction(()=>document.getElementById('pdf-status')?.textContent.endsWith('PDF 2/2페이지')&&!document.getElementById('pdf-canvas').hidden);
  assert.equal(await page.getByRole('button',{name:'다음 페이지',exact:true}).isDisabled(),true);await page.evaluate(()=>goPdfPage(3));assert.match(await page.locator('#pdf-status').innerText(),/범위/);
- await page.getByRole('button',{name:'닫기',exact:true}).click();assert.equal(await page.locator('#typing').inputValue(),'작성 중인 따라 쓰기');
+ await page.getByRole('button',{name:'닫기',exact:true}).click();assert.equal(await page.locator('.copyInput').nth(0).inputValue(),'작성 중인 따라 쓰기');assert.equal(await page.locator('.copyInput').nth(1).inputValue(),'두 번째 칸의 독립 초안');
  await page.evaluate(()=>{session.stage=2;session.blank=['입력 중'];session.blankPassed=true;render()});await page.evaluate(()=>openSource(80));await page.getByRole('button',{name:'닫기',exact:true}).click();assert.equal(await page.evaluate(()=>session.blank[0]),'입력 중');assert.equal(await page.evaluate(()=>session.blankPassed),true);
  await page.evaluate(()=>{session.stage=3;session.free='작성 중인 백지 답안';render()});await page.evaluate(()=>openSource(80));await page.getByRole('button',{name:'닫기',exact:true}).click();assert.equal(await page.locator('#freeInput').inputValue(),'작성 중인 백지 답안');
  await page.reload();await page.waitForFunction(()=>pdfState.file!==null);assert.equal(await page.evaluate(()=>pdfState.offset),-79);assert.equal(await page.evaluate(()=>data.progress.q002.count),8);
